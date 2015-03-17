@@ -1,0 +1,254 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
+    <head>
+        <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+        <title>iperf3 stats</title>
+        <link href="css/main.css" rel="stylesheet" type="text/css">
+        <!--[if lte IE 8]><script language="javascript" type="text/javascript" src="flot/excanvas.min.js"></script><![endif]-->
+        <script language="javascript" type="text/javascript" src="flot/jquery.js"></script>
+        <script language="javascript" type="text/javascript" src="flot/jquery.flot.js"></script>
+        <script language="javascript" type="text/javascript" src="flot/jquery.flot.time.js"></script>
+        <script language="javascript" type="text/javascript" src="flot/jquery.flot.crosshair.js"></script>
+        <script language="javascript" type="text/javascript" src="flot/jquery.flot.symbol.js"></script>
+        <script language="javascript" type="text/javascript" src="flot/jquery.flot.selection.js"></script>
+        
+        <script>
+            function plothover(event, pos, item) {
+
+                var str = "(" + pos.x.toFixed(2) + ", " + pos.y.toFixed(2) + ")";
+                $("#hoverdata").text(str);                
+                if (item) {
+                    var x = item.datapoint[0],
+                        y = item.datapoint[1];
+                    $("#tooltip").html(y +" ("+item.series.label+")")
+                            .css({top: item.pageY+5, left: item.pageX+5})
+                            .fadeIn(200);
+                } else {
+                    $("#tooltip").hide();
+                }
+            }
+            
+        </script>
+        
+    </head>
+    <body>
+
+        <div id="header">
+            <h2>iperf3 stats</h2>
+        </div>
+
+        <div id="content">
+
+            <h3>Individual Streams</h3>
+            
+            <div class="demo-container">
+                <div id="streams" class="demo-placeholder"></div>
+            </div>
+            
+            <div class="demo-container">
+                <div id="sum" class="demo-placeholder"></div>
+            </div>
+            
+
+        </div>
+
+        <div id="footer">
+            
+        </div>
+        <script type="text/javascript">            
+
+            var VERSION = "300";
+            var PATH = "files/";
+
+            var streams = [[]];
+            var sum = [];
+            
+            // iperf3
+            
+            $.getJSON(PATH + 'iperf3-'+VERSION+'.json', function(data) {
+                var start = data.start;
+                var intervals = data.intervals;
+                var timestamp = data.start.timestamp.timesecs;                
+                $.each(intervals, function(x, streamsObj) {
+
+                    $.each(streamsObj.streams, function(key, streamObj) {                                      
+                        if(streams[key] == undefined){
+                            streams[key] = [];
+                        }                                                
+                        stream = streams[key]
+                        if(streamObj.omitted != true){
+                            var ts = (timestamp + streamObj.start);
+                            stream.push([ts, streamObj.bits_per_second.toFixed(5) / 1000000]);
+                            streams[key] = stream;
+                        }
+                    });
+                    var sumObj = streamsObj.sum;                   
+                    if(sumObj.omitted != true){
+                        var sum_ts = (timestamp + sumObj.start);
+                        sum.push([sum_ts, sumObj.bits_per_second.toFixed(5) / 1000000]);;
+                    }
+                    
+                });
+                
+            });
+            
+            var cpu = [];
+            var mem = [];
+            var memPct = [];
+            
+            // iostat
+            /*
+            jQuery.get(PATH+'iostat-'+VERSION+'.txt', function(data) {
+                var lines = data.split("\n");
+                var count = 0;
+                jQuery.each(lines , function(key, val){
+                    count++;
+                    if(count != 1){                                         
+                        var values = val.split(';');
+                        if(values.length == 7){                            
+                            var time = parseFloat(values[0]);
+                            var user = parseFloat(values[1]);
+                            var nice = parseFloat(values[2]);
+                            var system = parseFloat(values[3]);
+                            var iowait = parseFloat(values[4]);
+                            var steal = parseFloat(values[5]);
+                            var idle = parseFloat(values[6]);
+                            cpu.push([time, (user + system)]);                    
+                        }
+                    }
+                });
+            }, 'text');
+            */
+            // vmstat
+            
+            jQuery.get(PATH+'vmstat-'+VERSION+'.txt', function(data) {                
+                var lines = data.split("\n");
+                var count = 0;
+                jQuery.each(lines , function(key, val){
+                    count++;
+                    if(count != 1){                                         
+                        var values = val.split(';');
+                        var time = parseFloat(values[0]);
+                        var cpu_use = parseFloat(values[1]);
+                        var mem_use = parseFloat(values[2]);
+                        var mem_use_pct = parseFloat(values[3]);
+                        cpu.push([time, (cpu_use)]);                         
+                        memPct.push([time, mem_use_pct]);
+                        mem.push([time, mem_use / 1000]);
+                    }
+                });
+            }, 'text');
+            
+            /*
+            jQuery.get(PATH+'vmstat-'+VERSION+'.txt', function(data) {                
+                var lines = data.split("\n");
+                var count = 0;
+                jQuery.each(lines , function(key, val){
+                    count++;
+                    if(count != 1){                                         
+                        var values = val.split(';');
+                        var time = parseFloat(values[0]);
+                        var swpd = parseFloat(values[1]);
+                        var free = parseFloat(values[2]);
+                        var buff = parseFloat(values[3]);
+                        var cache = parseFloat(values[4]);
+                        var user = parseFloat(values[5]);
+                        var system = parseFloat(values[6]);
+                        var iowait = parseFloat(values[6]);
+                        var idle = parseFloat(values[6]);
+                        cpu.push([time, (user + system)]); 
+                        var used = swpd + buff + cache;
+                        var mem_tot = used + free;
+                        memPct.push([time, (used / mem_tot) * 100 ]);
+                        mem.push([time, used / 1000]);
+                    }
+                });
+            }, 'text');
+            */
+    
+            // graph
+            
+            $(function() {
+                
+                var streamData = [ { data : streams[0], label : "Stream 1", yaxis : 1}, 
+                            { data : streams[1], label : "Stream 2", yaxis : 1},
+                            { data : streams[2], label : "Stream 3", yaxis : 1},
+                            { data : streams[3], label : "Stream 4", yaxis : 1},
+                            { data : streams[4], label : "Stream 5", yaxis : 1},
+                            { data : cpu , label : "CPU",  yaxis: 2, points: { symbol: "triangle" } },
+                            { data : memPct , label : "MEM", yaxis: 2, points: { symbol: "square" } },
+                        ];
+                
+                var sumData = [ 
+                    { data : sum, label : "Sum" }, 
+                    { data : cpu , label : "CPU",  yaxis: 2, points: { symbol: "triangle" } },
+                    { data : mem , label : "MEM",  points: { symbol: "square" } },
+                ]
+                        
+                var options = {
+                    series: {
+                        
+			lines: {
+                            show: true
+			},
+                        points: {
+                            show: true
+                        }
+                    },
+                    crosshair: {
+			mode: "x"
+                    },
+                    grid: {
+			hoverable: true,
+                        clickable: true,
+			autoHighlight: true
+                    },
+                    xaxis: {
+                        mode: "time",
+                    },
+                    yaxes:  [
+                        { 
+                            min: 0,
+                            alignTicksWithAxis: 1,
+                            position: "left"
+                        }, 
+                        {
+                            min: 0, 
+                            alignTicksWithAxis: 1,
+                            position: "right"
+                        }
+                    ],
+                    selection: {
+                        mode: "x"
+                    }
+                };
+                                
+                $.plot("#streams", streamData, options);
+                
+                $.plot("#sum", sumData, options);
+                
+                var legends = $("#streams .legendLabel");
+
+		legends.each(function () {
+			// fix the widths so they don't jump around
+			$(this).css('width', $(this).width());
+		});                                
+
+                $("<div id='tooltip'></div>").css({
+			position: "absolute",
+			display: "none",
+			border: "1px solid #fdd",
+			padding: "2px",
+			"background-color": "#fee",
+			opacity: 0.80
+		}).appendTo("body");
+
+		$("#streams").bind("plothover", plothover);                                
+                
+                $("#sum").bind("plothover", plothover);
+
+            });
+
+        </script>
+    </body>
+</html>
